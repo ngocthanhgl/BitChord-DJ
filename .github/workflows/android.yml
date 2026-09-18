@@ -19,6 +19,11 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-read-only: false
+
     - name: Setup local.properties
       run: |
         echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
@@ -28,13 +33,14 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build Dev Debug APK
-      run: ./gradlew assembleDevDebug
+      run: ./gradlew assembleDevDebug --parallel --build-cache --configuration-cache
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
         name: bitchord-dev-debug
         path: app/build/outputs/apk/dev/debug/*.apk
+        retention-days: 3
 
   build-prod-release:
     if: github.ref == 'refs/heads/main'
@@ -51,22 +57,31 @@ jobs:
         distribution: 'temurin'
         cache: gradle
 
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        cache-read-only: false
+
     - name: Setup Secrets (Keystore & local.properties)
       run: |
         echo "LASTFM_API_KEY=${{ secrets.LASTFM_API_KEY }}" > local.properties
         echo "LASTFM_SECRET=${{ secrets.LASTFM_SECRET }}" >> local.properties
-
-        echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > bitchord-release.jks
-        echo "storeFile=bitchord-release.jks" > keystore.properties
-        echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
-        echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
-        echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
+        if [ -n "${{ secrets.KEYSTORE_BASE64 }}" ]; then
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > bitchord-release.jks
+          echo "storeFile=bitchord-release.jks" > keystore.properties
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" >> keystore.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> keystore.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> keystore.properties
+        else
+          echo "No keystore secret — unsigned build"
+          echo "storeFile=" > keystore.properties
+        fi
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
     - name: Build Signed Prod Release APK
-      run: ./gradlew assembleProdRelease
+      run: ./gradlew assembleProdRelease --parallel --build-cache --configuration-cache
 
     - name: Verify pitch model packaged
       run: |
@@ -78,6 +93,7 @@ jobs:
       with:
         name: bitchord-prod-release-signed
         path: app/build/outputs/apk/prod/release/*.apk
+        retention-days: 3
 
   publish-release:
     if: github.ref == 'refs/heads/main'
@@ -100,7 +116,8 @@ jobs:
         TAG="v1.5.2-${{ github.run_number }}"
         NOTES="Automated prod release (build ${{ github.run_number }}, commit ${{ github.sha }}).
         DJ Automix: beat-matched blends, isolator bass swap, gain-staged reverb/echo, click-free handoffs."
+        if [ "${{ github.repository }}" != "ngocthanhgl/BitChord-DJ" ]; then REPO="ngocthanhgl/BitChord-DJ"; else REPO="${{ github.repository }}"; fi
         gh release create "$TAG" dist/*.apk \
-          --repo "ngocthanhgl/BitChord" \
+          --repo "$REPO" \
           --title "BitChord DJ Mix v1.5.2 (build ${{ github.run_number }})" \
           --notes "$NOTES"
