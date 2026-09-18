@@ -305,7 +305,7 @@ object AppSettings {
     val loudnessTargetLufs = MutableStateFlow(-14.0f)
 
     /** The CPU budget used by Beat This! and vocal analysis for Automix. */
-    val automixPerformanceMode = MutableStateFlow(AutomixPerformanceMode.BALANCED)
+    val automixPerformanceMode = MutableStateFlow(AutomixPerformanceMode.PERFORMANCE)
     val skipSilence = MutableStateFlow(false)
 
     /** Requested PCM representation at the Android AudioTrack boundary. */
@@ -766,9 +766,9 @@ object AppSettings {
             prefs.getFloat(KEY_LOUDNESS_TARGET_LUFS, -14.0f).coerceIn(-23.0f, -7.0f)
         automixPerformanceMode.value = runCatching {
             AutomixPerformanceMode.valueOf(
-                prefs.getString(KEY_AUTOMIX_PERFORMANCE_MODE, null) ?: AutomixPerformanceMode.BALANCED.name,
+                prefs.getString(KEY_AUTOMIX_PERFORMANCE_MODE, null) ?: AutomixPerformanceMode.PERFORMANCE.name,
             )
-        }.getOrDefault(AutomixPerformanceMode.BALANCED)
+        }.getOrDefault(AutomixPerformanceMode.PERFORMANCE)
         skipSilence.value = prefs.getBoolean(KEY_SKIP_SILENCE, false)
         outputPcmMode.value = runCatching {
             OutputPcmMode.valueOf(
