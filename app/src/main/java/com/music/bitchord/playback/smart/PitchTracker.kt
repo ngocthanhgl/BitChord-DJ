@@ -74,21 +74,21 @@ class PitchTracker(private val context: Context) {
             return runCatching {
                 val file = File(context.filesDir, MODEL_ASSET)
                 if (!file.exists() || file.length() == 0L) {
+                    val tmp = File(context.filesDir, "$MODEL_ASSET.tmp")
                     context.assets.open(MODEL_ASSET).use { input ->
-                        file.outputStream().use { output -> input.copyTo(output) }
+                        tmp.outputStream().use { output -> input.copyTo(output) }
                     }
+                    if (!tmp.renameTo(file)) { tmp.copyTo(file, overwrite = true); tmp.delete() }
                 }
                 val options = OrtSession.SessionOptions().apply {
                     val cores = Runtime.getRuntime().availableProcessors().coerceIn(4, 8)
                     runCatching {
                         addXnnpack(mapOf("intra_op_num_threads" to cores.toString()))
                     }.onFailure { TrackLog.d(TAG, "XNNPACK EP unavailable, using CPU", it) }
-                    setIntraOpNumThreads(1)
+                    setIntraOpNumThreads(cores)
                     setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-                    // Same reasoning as BeatTracker: analysis runs a handful of
-                    // times per track, so per-run allocation beats a retained arena.
-                    setCPUArenaAllocator(false)
-                    setMemoryPatternOptimization(false)
+                    setCPUArenaAllocator(true)
+                    setMemoryPatternOptimization(true)
                 }
                 OrtEnvironment.getEnvironment().createSession(file.absolutePath, options)
                     .also {

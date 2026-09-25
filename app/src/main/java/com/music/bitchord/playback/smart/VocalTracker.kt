@@ -108,9 +108,11 @@ class VocalTracker(private val context: Context) {
             return runCatching {
                 val file = File(context.filesDir, MODEL_ASSET)
                 if (!file.exists() || file.length() == 0L) {
+                    val tmp = File(context.filesDir, "$MODEL_ASSET.tmp")
                     context.assets.open(MODEL_ASSET).use { input ->
-                        file.outputStream().use { output -> input.copyTo(output) }
+                        tmp.outputStream().use { output -> input.copyTo(output) }
                     }
+                    if (!tmp.renameTo(file)) { tmp.copyTo(file, overwrite = true); tmp.delete() }
                 }
                 val options = OrtSession.SessionOptions().apply {
                     val cores = Runtime.getRuntime().availableProcessors().coerceIn(4, 8)
