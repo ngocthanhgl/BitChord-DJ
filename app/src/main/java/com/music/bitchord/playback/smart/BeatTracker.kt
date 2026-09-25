@@ -81,20 +81,15 @@ class BeatTracker(private val context: Context) {
                     }
                 }
                 val options = OrtSession.SessionOptions().apply {
-                    // XNNPACK on dynamic shapes + full-core intra (8-core phone -> 8 threads).
                     val cores = Runtime.getRuntime().availableProcessors().coerceIn(4, 8)
                     runCatching {
                         addXnnpack(mapOf("intra_op_num_threads" to cores.toString()))
                     }.onFailure { TrackLog.d(TAG, "XNNPACK EP unavailable, using CPU", it) }
-                    setIntraOpNumThreads(1)
+                    setIntraOpNumThreads(cores)
                     setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-                    // ORT's arena allocator keeps every block it has ever needed, which for this
-                    // graph is tens of megabytes of native heap retained for the life of the
-                    // session, far past the model's own size, on a process that also has to
-                    // survive in the background. Analysis runs a handful of times per track, so
-                    // allocating per run is the right trade.
-                    setCPUArenaAllocator(false)
-                    setMemoryPatternOptimization(false)
+                    // INT8 beat model benefits from arena reuse (packed 30MB), keep arena true.
+                    setCPUArenaAllocator(true)
+                    setMemoryPatternOptimization(true)
                 }
                 OrtEnvironment.getEnvironment().createSession(file.absolutePath, options)
                     .also {

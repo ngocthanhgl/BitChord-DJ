@@ -491,17 +491,8 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
 
         submit(trackId) {
             try {
-                // Efficient mode yields to decoding and playback rather than
-                // competing for a core. Thread count remains the speed knob.
-                // Applies on both lanes: each analysis job runs on a lane
-                // thread and reads the mode dynamically.
-                Process.setThreadPriority(
-                    if (AppSettings.automixPerformanceMode.value == AutomixPerformanceMode.EFFICIENT) {
-                        Process.THREAD_PRIORITY_BACKGROUND
-                    } else {
-                        Process.THREAD_PRIORITY_DEFAULT
-                    },
-                )
+                // Keep ORT XNNPACK workers at NORM priority; INT8 kernels are CPU-bound
+                // and background priority throttles ~2x. EFFICIENT still uses core count knob.
                 // [restoreOnce] queues onto the lane executors, so a stored result for this track has landed by now if there
                 // was one — but the decision to get here was taken a tick
                 // earlier, when it had not. Without this check a track measured
@@ -1641,7 +1632,7 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         deriveFeatures: Boolean,
     ): RegionInputs {
         val mono = FloatArray(stereo.left.size) { index -> (stereo.left[index] + stereo.right[index]) * 0.5f }
-        val forModel = if (abs(stereo.sampleRate - MelSpectrogram.sampleRate) > 1.0) {
+        val forModel = if (abs(stereo.sampleRate - MelSpectrogram.sampleRate) > 10.0) {
             MelSpectrogram.resample(mono, stereo.sampleRate, MelSpectrogram.sampleRate)
         } else {
             mono
@@ -1652,7 +1643,7 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         // rest of the analysis, which is the one thing this function exists to
         // avoid.
         val derived = if (deriveFeatures) {
-            val forFeatures = if (abs(stereo.sampleRate - TrackFeatures.sampleRate) > 1.0) {
+            val forFeatures = if (abs(stereo.sampleRate - TrackFeatures.sampleRate) > 10.0) {
                 TrackFeatures.resample(mono, stereo.sampleRate, TrackFeatures.sampleRate)
             } else {
                 mono

@@ -117,12 +117,10 @@ class VocalTracker(private val context: Context) {
                     runCatching {
                         addXnnpack(mapOf("intra_op_num_threads" to cores.toString()))
                     }.onFailure { TrackLog.d(TAG, "XNNPACK EP unavailable, using CPU", it) }
-                    setIntraOpNumThreads(1)
+                    setIntraOpNumThreads(cores)
                     setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
-                    // Same reasoning as BeatTracker: the arena retains every block it allocates for
-                    // the life of the session, which a backgrounded music player cannot justify.
-                    setCPUArenaAllocator(false)
-                    setMemoryPatternOptimization(false)
+                    setCPUArenaAllocator(true)
+                    setMemoryPatternOptimization(true)
                 }
                 OrtEnvironment.getEnvironment().createSession(file.absolutePath, options)
                     .also {
