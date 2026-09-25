@@ -113,8 +113,9 @@ class VocalTracker(private val context: Context) {
                     }
                 }
                 val options = OrtSession.SessionOptions().apply {
+                    val cores = Runtime.getRuntime().availableProcessors().coerceIn(4, 8)
                     runCatching {
-                        addXnnpack(mapOf("intra_op_num_threads" to "4"))
+                        addXnnpack(mapOf("intra_op_num_threads" to cores.toString()))
                     }.onFailure { TrackLog.d(TAG, "XNNPACK EP unavailable, using CPU", it) }
                     setIntraOpNumThreads(1)
                     setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)

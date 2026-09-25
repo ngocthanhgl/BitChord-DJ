@@ -139,10 +139,12 @@ enum class EqualizerMode {
 }
 
 /** CPU budget for Automix's background analysis, not its audible mix algorithm. */
-enum class AutomixPerformanceMode(val inferenceThreads: Int) {
+enum class AutomixPerformanceMode(val baseThreads: Int) {
     EFFICIENT(1),
     BALANCED(2),
     PERFORMANCE(4),
+    ;
+    val inferenceThreads: Int get() = if (this == PERFORMANCE) Runtime.getRuntime().availableProcessors().coerceIn(4, 8) else baseThreads
 }
 
 /** Stable persisted ordering for each on-device music library. */
