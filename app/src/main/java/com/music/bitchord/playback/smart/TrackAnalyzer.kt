@@ -292,13 +292,17 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         // drain: the in-flight job finishes on its lane (per-lane tracker
         // instances plus the global [running] guard keep the brief overlap
         // safe) while every new job takes the newly selected lane.
-        // Priority threading was removed for stock parity (every job is
-        // normal): under PERFORMANCE every job takes the low lane, otherwise
-        // the high lane — single-lane FIFO either way, like upstream.
+        // 3) True dual lane in PERFORMANCE: hash-partition across high/low so
+        // head/tail of different tracks overlap (same track still mutex via running set).
+        // PRIORITY_NORMAL for all jobs; lane choice is the parallelism.
         val dualLane = AppSettings.automixPerformanceMode.value == AutomixPerformanceMode.PERFORMANCE
-        val low = dualLane
-        val lane = if (low) lowLane else highLane
-        (if (low) lowExecutor else highExecutor).execute(AnalysisJob(lane, PRIORITY_NORMAL, trackId, block))
+        if (dualLane) {
+            val lane = if ((trackId?.hashCode() ?: jobSeq.get().toInt()) and 1 == 0) highLane else lowLane
+            val exec = if (lane === highLane) highExecutor else lowExecutor
+            exec.execute(AnalysisJob(lane, PRIORITY_NORMAL, trackId, block))
+        } else {
+            highExecutor.execute(AnalysisJob(highLane, PRIORITY_NORMAL, trackId, block))
+        }
     }
 
     /**
@@ -1261,7 +1265,8 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         // stereo buffer is paid for once.
         val window = BeatTracker.WINDOW_SECONDS
         val tailStart = max(0.0, effectiveDuration - window)
-        val head = region(openSource, 0.0, minOf(window, effectiveDuration), features, trackPitch = true)
+        // 3) Pitch only when DJ active (blueprint §5.2 verify needs median F0)
+        val head = region(openSource, 0.0, minOf(window, effectiveDuration), features, trackPitch = AppSettings.mixsetModeEnabled.value)
         val tail = if (tailStart > window / 2) region(openSource, tailStart, effectiveDuration, features) else null
 
         val headGrid = head?.grid
@@ -1677,6 +1682,11 @@ class TrackAnalyzer(private val context: Context, private val cache: AudioCache)
         features: TrackFeatures.Features,
         actualStart: Double,
     ): DoubleArray? {
+        // 3) DJ-only: stock Automix never needs vocal mask; skip 16 MB tensor
+        if (!AppSettings.mixsetModeEnabled.value) return null
+        // Low-energy tracks never trip vocal logic; skip to save inference
+        val meanEnergy = features.energyCurve.mapNotNull { it.energy.takeIf { e -> e.isFinite() && e >= 0 } }.average().let { if (it.isNaN()) 0.0 else it }
+        if (meanEnergy <= 0 || features.vocalProbability < 0.15) return null
         val lane = currentLane.get() ?: lowLane
         val curve = features.energyCurve
         if (curve.isEmpty() || !VocalSpectrogram.available) return null

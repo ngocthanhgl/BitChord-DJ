@@ -81,8 +81,14 @@ class BeatTracker(private val context: Context) {
                     }
                 }
                 val options = OrtSession.SessionOptions().apply {
-                    setIntraOpNumThreads(threads)
-                    setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                    // 1) XNNPACK is faster than NNAPI on dynamic shapes and avoids vendor HAL
+                    // fallback (NNAPI deprecated Android 15). Intra-op 1 avoids ORT vs XNNPACK
+                    // threadpool contention; XNNPACK gets its own 4 threads.
+                    runCatching {
+                        addXnnpack(mapOf("intra_op_num_threads" to "4"))
+                    }.onFailure { TrackLog.d(TAG, "XNNPACK EP unavailable, using CPU", it) }
+                    setIntraOpNumThreads(1)
+                    setOptimizationLevel(OrtSession.SessionOptions.OptLevel.BASIC_OPT)
                     // ORT's arena allocator keeps every block it has ever needed, which for this
                     // graph is tens of megabytes of native heap retained for the life of the
                     // session, far past the model's own size, on a process that also has to
